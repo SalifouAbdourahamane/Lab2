@@ -1,7 +1,7 @@
 import requests
 import numpy as np
 
-BASE_URL = "http://localhost:5001"
+BASE_URL = "http://localhost:4000"
 TEST_FILE = "iris_extended_encoded.csv"
 
 def upload_dataset(file_path):
