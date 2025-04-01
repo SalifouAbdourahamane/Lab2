@@ -202,6 +202,6 @@ def predict(model_id):
     }), 200
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001))
+    port = int(os.environ.get('PORT', 4000))
     print(f"Starting server on port {port}", file=sys.stdout, flush=True)
     app.run(host='0.0.0.0', port=port)
