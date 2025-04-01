@@ -1,104 +1,94 @@
 # app.py
-from flask import Flask, request, jsonify
-from base_iris_lab1 import load_local, build, train, score, new_model, test
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import LabelEncoder
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from flask import Flask, jsonify
+import sys
 
 app = Flask(__name__)
 
-# Global lists to store dataset and model indices
-datasets = []
-models = []
+# Global storage
+dataset = None
+model = None
+test_results = None
 
-# Upload training data
-@app.route('/iris/datasets', methods=['POST'])
-def upload_dataset():
-    """
-    Upload a dataset via a CSV file.
-    """
-    if 'train' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-    file = request.files['train']
-    file.save('temp.csv')
-    try:
-        dataset_id = load_local('temp.csv')
-        datasets.append(dataset_id)
-        return jsonify({'dataset_id': dataset_id}), 201
-    except Exception as e:
-        return jsonify({'error': f'Failed to load dataset: {str(e)}'}), 500
+def load_dataset(filepath='iris_extended_encoded.csv'):
+    print(f"Loading dataset from {filepath}", file=sys.stdout, flush=True)
+    df = pd.read_csv(filepath, header=0)
+    features = df.iloc[:, 1:21].values  # 20 features
+    labels = df.iloc[:, 0].values       # First column as labels
+    
+    le = LabelEncoder()
+    encoded_labels = le.fit_transform(labels)
+    
+    dataset = {
+        'features': features,
+        'labels': encoded_labels,
+        'label_encoder': le
+    }
+    print(f"Dataset loaded", file=sys.stdout, flush=True)
+    return dataset
 
-# Build and train a new model
-@app.route('/iris/model', methods=['POST'])
-def create_model():
-    """
-    Create and train a new model using the specified dataset.
-    """
-    try:
-        dataset_id = int(request.form.get('dataset'))
-        if dataset_id >= len(datasets) or dataset_id < 0:
-            return jsonify({'error': 'Invalid dataset_id'}), 400
-        model_id = new_model(dataset_id)
-        models.append(model_id)
-        return jsonify({'model_id': model_id}), 201
-    except ValueError:
-        return jsonify({'error': 'dataset_id must be an integer'}), 400
-    except Exception as e:
-        return jsonify({'error': f'Failed to create model: {str(e)}'}), 500
+def build_model():
+    print("Building model", file=sys.stdout, flush=True)
+    model = Sequential([
+        Dense(64, activation='relu', input_dim=20),
+        Dense(3, activation='softmax')  # 3 classes for Iris
+    ])
+    model.compile(optimizer='adam',
+                  loss='sparse_categorical_crossentropy',
+                  metrics=['accuracy'])
+    print(f"Model built", file=sys.stdout, flush=True)
+    return model
 
-# Retrain an existing model
-@app.route('/iris/model/<int:model_id>', methods=['PUT'])
-def retrain_model(model_id):
-    """
-    Retrain an existing model using the specified dataset.
-    """
-    try:
-        if model_id >= len(models) or model_id < 0:
-            return jsonify({'error': 'Invalid model_id'}), 400
-        dataset_id = int(request.args.get('dataset'))
-        if dataset_id >= len(datasets) or dataset_id < 0:
-            return jsonify({'error': 'Invalid dataset_id'}), 400
-        history = train(model_id, dataset_id)
-        return jsonify(history), 200
-    except ValueError:
-        return jsonify({'error': 'dataset_id must be an integer'}), 400
-    except Exception as e:
-        return jsonify({'error': f'Failed to retrain model: {str(e)}'}), 500
+def train_model(model, dataset):
+    print("Training model", file=sys.stdout, flush=True)
+    model.fit(dataset['features'], dataset['labels'], epochs=10, verbose=0)
+    print("Training completed", file=sys.stdout, flush=True)
+    return model
 
-# Score a model with provided features
-@app.route('/iris/model/<int:model_id>/score', methods=['GET'])
-def score_model(model_id):
-    """
-    Score a model using the provided features.
-    """
-    try:
-        if model_id >= len(models) or model_id < 0:
-            return jsonify({'error': 'Invalid model_id'}), 400
-        fields = list(map(float, request.args.get('fields').split(',')))
-        if len(fields) != 20:  # Assuming 20 features as per your base code
-            return jsonify({'error': 'Expected 20 features'}), 400
-        prediction = score(model_id, fields)
-        return jsonify({'species': prediction}), 200
-    except ValueError:
-        return jsonify({'error': 'fields must be a comma-separated list of numbers'}), 400
-    except Exception as e:
-        return jsonify({'error': f'Failed to score model: {str(e)}'}), 500
+def test_model(model, dataset):
+    print("Testing model", file=sys.stdout, flush=True)
+    X_test = dataset['features']
+    y_test = dataset['labels']
+    print(f"X_test shape: {X_test.shape}, y_test shape: {y_test.shape}", file=sys.stdout, flush=True)
+    
+    loss, accuracy = model.evaluate(X_test, y_test, verbose=0)
+    print(f"Evaluation complete - Loss: {loss}, Accuracy: {accuracy}", file=sys.stdout, flush=True)
+    
+    y_pred = model.predict(X_test)
+    predicted = np.argmax(y_pred, axis=1)
+    print(f"Predicted labels (first 5): {predicted[:5]}, Actual labels (first 5): {y_test[:5]}", file=sys.stdout, flush=True)
+    
+    metrics_bundle = {
+        'accuracy': float(accuracy),
+        'loss': float(loss),
+        'actual': y_test.tolist(),
+        'predicted': predicted.tolist()
+    }
+    print("Metrics calculated", file=sys.stdout, flush=True)
+    return metrics_bundle
 
-# Test a model with a dataset
-@app.route('/iris/model/<int:model_id>/test', methods=['GET'])
-def test_model(model_id):
-    """
-    Test a model using the specified dataset.
-    """
-    try:
-        if model_id >= len(models) or model_id < 0:
-            return jsonify({'error': 'Invalid model_id'}), 400
-        dataset_id = int(request.args.get('dataset'))
-        if dataset_id >= len(datasets) or dataset_id < 0:
-            return jsonify({'error': 'Invalid dataset_id'}), 400
-        test_results = test(model_id, dataset_id)
-        return jsonify(test_results), 200
-    except ValueError:
-        return jsonify({'error': 'dataset_id must be an integer'}), 400
-    except Exception as e:
-        return jsonify({'error': f'Failed to test model: {str(e)}'}), 500
+def initialize():
+    global dataset, model, test_results
+    print("Initializing server", file=sys.stdout, flush=True)
+    dataset = load_dataset('iris_extended_encoded.csv')
+    model = build_model()
+    train_model(model, dataset)
+    test_results = test_model(model, dataset)
+    print("Initialization completed", file=sys.stdout, flush=True)
+
+@app.route('/iris/model/test', methods=['GET'])
+def test_endpoint():
+    print("API: Serving test results", file=sys.stdout, flush=True)
+    if test_results is None:
+        return jsonify({'error': 'No results available'}), 500
+    return jsonify(test_results), 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=4000, debug=True)
+    initialize()
+    port = 5001  # Changed from 4000 to 5001
+    print(f"Server starting on http://0.0.0.0:{port}", file=sys.stdout, flush=True)
+    app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
