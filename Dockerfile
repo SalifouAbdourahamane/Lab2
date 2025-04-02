@@ -13,16 +13,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy all application files
-COPY . .
 COPY base_iris_lab1.py test.py app.py client.py iris_extended_encoded.csv ./
 
 # Environment variables
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=production 
-ENV PORT=5001
+ENV PORT=4000
 
 # Expose the API port
-EXPOSE 5001
+EXPOSE 4000
 
 # Run the application
-CMD ["flask", "run", "--host=0.0.0.0", "--port=5001"]
+CMD ["flask", "run", "--host=0.0.0.0", "--port=4000"]
